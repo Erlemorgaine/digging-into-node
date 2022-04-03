@@ -48,16 +48,97 @@ async function main() {
   };
 
   var initSQL = fs.readFileSync(DB_SQL_PATH, "utf-8");
-  // TODO: initialize the DB structure
+
+  // Execute SQL schema
+  await SQL3.exec(initSQL);
 
   var other = args.other;
   var something = Math.trunc(Math.random() * 1e9);
 
   // ***********
 
-  // TODO: insert values and print all records
+  let otherID = await insertOrLookupOther(other);
+
+  if (otherID) {
+    let result = await insertSomething(otherID, something);
+
+    if (result) {
+      let all = await getAllRecords();
+      console.table(all);
+    }
+  }
 
   error("Oops!");
+}
+
+async function insertSomething(id, something) {
+  let res = await SQL3.run(
+    `
+      INSERT INTO
+        Something (otherID, data)
+      VALUES
+        (?, ?)
+    `,
+    id,
+    something
+  );
+
+  // changes indicates that something was changes if > 0
+  return res && res.changes > 0;
+}
+
+async function insertOrLookupOther(other) {
+  // The way to interpolate a value is putting a ?
+  let res = await SQL3.get(
+    `
+    SELECT
+      id
+    FROM
+      Other
+    WHERE
+    data = ?
+  `,
+    other
+  );
+
+  if (res && res.id) {
+    return res.id;
+  } else {
+    // Run is to insert or update.
+    // Other is table, data is column
+    res = await SQL3.run(
+      `
+      INSERT INTO
+        Other (data)
+      VALUES
+        (?)
+    `,
+      other
+    );
+
+    if (res && res.lastID) {
+      return res.lastID;
+    }
+  }
+}
+
+async function getAllRecords() {
+  const res = await SQL3.all(
+    `
+      SELECT
+        Other.data AS 'other',
+        Something.data as 'something'
+      FROM
+        Something JOIN Other
+        ON (Something.otherID = Other.id)
+      ORDER BY
+        Other.id DESC, Something.data ASC
+    `
+  );
+
+  if (res && res.length > 0) {
+    return res;
+  }
 }
 
 function error(err) {
